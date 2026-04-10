@@ -46,7 +46,7 @@ public class NativeHelper
     public static final AddressLayout C_POINTER = ValueLayout.ADDRESS.withTargetLayout(MemoryLayout.sequenceLayout(java.lang.Long.MAX_VALUE, JAVA_BYTE));
     public static final ValueLayout.OfLong C_LONG = ValueLayout.JAVA_LONG;
 
-    private static final SymbolLookup SYMBOL_LOOKUP = SymbolLookup.loaderLookup().or(Linker.nativeLinker().defaultLookup());
+    private static final SymbolLookup SYMBOL_LOOKUP;
     private static final Platform PLATFORM;
 
     static
@@ -76,17 +76,18 @@ public class NativeHelper
         {
             throw new UnsatisfiedLinkError("Unsupported OS: " + osName);
         }
-        loadNativeLibraryFromClasspath(prefix);
+        SYMBOL_LOOKUP = loadNativeLibraryFromClasspath(prefix);
     }
 
-    private static void loadNativeLibraryFromClasspath(String prefix)
+    private static SymbolLookup loadNativeLibraryFromClasspath(String prefix)
     {
         try
         {
             String libName = prefix + "/" + System.mapLibraryName("quiche");
             Path lib = extractFromResourcePath(libName, NativeHelper.class.getClassLoader());
-            System.load(lib.toAbsolutePath().toString());
+            SymbolLookup symbolLookup = SymbolLookup.libraryLookup(lib, Arena.global());
             lib.toFile().deleteOnExit();
+            return symbolLookup;
         }
         catch (Throwable x)
         {
