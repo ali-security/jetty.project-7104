@@ -30,12 +30,6 @@ jobs:
           java-version: "8"
           cache: maven
 
-      # Adds the Jenkins CI plugin repository to pom.xml so that Jetty-specific
-      # Maven plugins (e.g. jetty-version-maven-plugin) that are not published
-      # to Maven Central can be resolved.
-      - name: Apply known-issues patch
-        run: git apply 9.3.24.v20180605+sp3.patch
-
       - name: Compile
         run: mvn -B clean install -Dtest=None -Dalpn.version=${{ env.ALPN_VERSION }}
 
