@@ -12,6 +12,12 @@ jobs:
 
     env:
       MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
+      # The pom.xml profiles that set alpn.version only know about JDK 8
+      # builds up to 1.8.0_172. GitHub Actions runners ship a much newer
+      # JDK 8, so no profile activates and alpn.version stays as the
+      # literal default "undefined", breaking artifact resolution.
+      # We pin to the latest known-good version explicitly.
+      ALPN_VERSION: "8.1.12.v20180117"
 
     steps:
       - name: Checkout
@@ -24,20 +30,26 @@ jobs:
           java-version: "8"
           cache: maven
 
+      # Adds the Jenkins CI plugin repository to pom.xml so that Jetty-specific
+      # Maven plugins (e.g. jetty-version-maven-plugin) that are not published
+      # to Maven Central can be resolved.
+      - name: Apply known-issues patch
+        run: git apply 9.3.24.v20180605+sp3.patch
+
       - name: Compile
-        run: mvn -B clean install -Dtest=None
+        run: mvn -B clean install -Dtest=None -Dalpn.version=${{ env.ALPN_VERSION }}
 
       - name: Javadoc
-        run: mvn -B javadoc:javadoc
+        run: mvn -B javadoc:javadoc -Dalpn.version=${{ env.ALPN_VERSION }}
 
       - name: Test
         id: test
-        run: mvn -B install -Dmaven.test.failure.ignore=true
+        run: mvn -B install -Dmaven.test.failure.ignore=true -Dalpn.version=${{ env.ALPN_VERSION }}
         continue-on-error: true
 
       - name: Compact3
         working-directory: aggregates/jetty-all-compact3
-        run: mvn -B -Pcompact3 clean install
+        run: mvn -B -Pcompact3 clean install -Dalpn.version=${{ env.ALPN_VERSION }}
 
       - name: Publish test results
         uses: dorny/test-reporter@v1
@@ -54,7 +66,7 @@ jobs:
         with:
           name: surefire-reports
           path: "**/target/surefire-reports/TEST-*.xml"
-          retention-days: 1
+          retention-days: 7
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
@@ -66,4 +78,4 @@ jobs:
             !**/target/*-tests.jar
             !**/target/*-sources.jar
             !**/target/*-javadoc.jar
-          retention-days: 1
+          retention-days: 14
