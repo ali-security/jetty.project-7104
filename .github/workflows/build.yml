@@ -1,0 +1,75 @@
+name: Jetty CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: maven
+
+      # Adds the Jenkins CI plugin repository to pom.xml so that Jetty-specific
+      # Maven plugins (e.g. jetty-version-maven-plugin) that are not published
+      # to Maven Central can be resolved.
+      - name: Apply known-issues patch
+        run: git apply 9.3.24.v20180605+sp3.patch
+
+      - name: Compile
+        run: mvn -B clean install -Dtest=None
+
+      - name: Javadoc
+        run: mvn -B javadoc:javadoc
+
+      - name: Test
+        id: test
+        run: mvn -B install -Dmaven.test.failure.ignore=true
+        continue-on-error: true
+
+      - name: Compact3
+        working-directory: aggregates/jetty-all-compact3
+        run: mvn -B -Pcompact3 clean install
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Surefire Test Results
+          path: "**/target/surefire-reports/TEST-*.xml"
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload surefire reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: surefire-reports
+          path: "**/target/surefire-reports/TEST-*.xml"
+          retention-days: 1
+
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jetty-jars-9.3.24.v20180605
+          path: |
+            **/target/*.jar
+            !**/target/*-tests.jar
+            !**/target/*-sources.jar
+            !**/target/*-javadoc.jar
+          retention-days: 1
