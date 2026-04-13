@@ -1442,4 +1442,17 @@
       </build>
     </profile>
   </profiles>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>jenkins-releases</id>
+      <name>Jenkins Releases</name>
+      <url>https://repo.jenkins-ci.org/public/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+     </snapshots>
+    </pluginRepository>
+  </pluginRepositories>
 </project>
