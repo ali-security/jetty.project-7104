@@ -51,6 +51,39 @@ import org.eclipse.jetty.util.UrlEncoded;
  */
 public class HttpURI
 {
+    // RFC 3986 character class helpers used for authority validation (CVE-2024-6763)
+    private static boolean isDigit(char c)
+    {
+        return (c >= '0') && (c <= '9');
+    }
+
+    private static boolean isHexDigit(char c)
+    {
+        return ((c >= 'a') && (c <= 'f')) ||
+            ((c >= 'A') && (c <= 'F')) ||
+            ((c >= '0') && (c <= '9'));
+    }
+
+    private static boolean isUnreserved(char c)
+    {
+        return ((c >= 'a') && (c <= 'z')) ||
+            ((c >= 'A') && (c <= 'Z')) ||
+            ((c >= '0') && (c <= '9')) ||
+            (c == '-') || (c == '.') || (c == '_') || (c == '~');
+    }
+
+    private static boolean isSubDelim(char c)
+    {
+        return c == '!' || c == '$' || c == '&' || c == '\'' || c == '(' || c == ')' ||
+            c == '*' || c == '+' || c == ',' || c == ';' || c == '=';
+    }
+
+    // unreserved / pct-encoded / sub-delims  (RFC 3986 reg-name / userinfo character sets)
+    private static boolean isUnreservedPctEncodedOrSubDelim(char c)
+    {
+        return isUnreserved(c) || c == '%' || isSubDelim(c);
+    }
+
     private enum State {
     START,
     HOST_OR_PATH,
@@ -215,7 +248,9 @@ public class HttpURI
         boolean encoded=false;
         int mark=offset;
         int path_mark=0;
-        
+        int encodedCharacters = 0; // tracks remaining hex digits expected after a '%' in the authority
+        boolean password = false;  // true while in HOST state after a colon that may be a password separator
+
         for (int i=offset; i<end; i++)
         {
             char c=uri.charAt(i);
@@ -339,25 +374,50 @@ public class HttpURI
                     switch (c)
                     {
                         case '/':
+                            if (encodedCharacters > 0 || password)
+                                throw new IllegalArgumentException("Bad authority");
                             _host = uri.substring(mark,i);
                             path_mark=mark=i;
                             state=State.PATH;
                             break;
                         case ':':
+                            if (encodedCharacters > 0 || password)
+                                throw new IllegalArgumentException("Bad authority");
                             if (i > mark)
                                 _host=uri.substring(mark,i);
                             mark=i+1;
                             state=State.PORT;
                             break;
                         case '@':
+                            if (encodedCharacters > 0)
+                                throw new IllegalArgumentException("Bad authority");
                             if (_user!=null)
                                 throw new IllegalArgumentException("Bad authority");
                             _user=uri.substring(mark,i);
+                            password = false;
                             mark=i+1;
                             break;
-                            
                         case '[':
+                            if (i != mark)
+                                throw new IllegalArgumentException("Bad authority");
                             state=State.IPV6;
+                            break;
+                        case '%':
+                            if (encodedCharacters > 0)
+                                throw new IllegalArgumentException("Bad authority");
+                            encodedCharacters = 2;
+                            break;
+                        default:
+                            if (encodedCharacters > 0)
+                            {
+                                encodedCharacters--;
+                                if (!isHexDigit(c))
+                                    throw new IllegalArgumentException("Bad authority");
+                            }
+                            else if (!isUnreserved(c) && !isSubDelim(c))
+                            {
+                                throw new IllegalArgumentException("Bad authority");
+                            }
                             break;
                     }
                     continue;
@@ -396,6 +456,7 @@ public class HttpURI
                             throw new IllegalArgumentException("Bad authority");
                         // It wasn't a port, but a password!
                         _user=_host+":"+uri.substring(mark,i);
+                        encodedCharacters = 0;
                         mark=i+1;
                         state=State.HOST;
                     }
@@ -404,6 +465,25 @@ public class HttpURI
                         _port=TypeUtil.parseInt(uri,mark,i-mark,10);
                         path_mark=mark=i;
                         state=State.PATH;
+                    }
+                    else if (!isDigit(c))
+                    {
+                        if (isUnreservedPctEncodedOrSubDelim(c))
+                        {
+                            // The colon was a password separator, not a port separator.
+                            // Rewind mark to include the username and switch back to HOST state.
+                            password = true;
+                            state = State.HOST;
+                            if (_host != null)
+                            {
+                                mark = mark - _host.length() - 1;
+                                _host = null;
+                            }
+                        }
+                        else
+                        {
+                            throw new IllegalArgumentException("Bad authority");
+                        }
                     }
                     continue;
                 }
@@ -500,6 +580,8 @@ public class HttpURI
                 break;
                 
             case HOST:
+                if (password)
+                    throw new IllegalArgumentException("Bad authority");
                 if(end>mark)
                     _host=uri.substring(mark,end);
                 break;

@@ -222,4 +222,77 @@ public class HttpURITest
         assertEquals(uri.getAuthority(), "example.com:8888");
         assertEquals(uri.getUser(), "user:password");
     }
+
+    /**
+     * CVE-2024-6763: authority component must be strictly validated to prevent
+     * injection via illegal characters or malformed percent-encoding.
+     */
+    @Test
+    public void testBadAuthorities()
+    {
+        String[] badUris = {
+            "http://#host/path",
+            "https:// host/path",
+            "https://h st/path",
+            "https://h\000st/path",
+            "https://h%GGst/path",
+            "https://host%/path",
+            "https://host%0/path",
+            "https://host%u001f/path",
+            "https://host%:8080/path",
+            "https://host%0:8080/path",
+            "https://user%@host/path",
+            "https://user%0@host/path",
+            "https://host:notport/path",
+            "https://user@host:notport/path",
+            "https://user:password@host:notport/path",
+            "https://user @host.com/",
+            "https://user#@host.com/",
+            "https://bad[0::1::2::3::4]/"
+        };
+
+        for (String uri : badUris)
+        {
+            try
+            {
+                new HttpURI(uri);
+                fail("Expected IllegalArgumentException for: " + uri);
+            }
+            catch (IllegalArgumentException e)
+            {
+                // expected
+            }
+        }
+    }
+
+    @Test
+    public void testGoodAuthorities()
+    {
+        // these must still parse without error
+        String[] goodUris = {
+            "http://host/path",
+            "http://host:8080/path",
+            "http://user@host/path",
+            "http://user:password@host/path",
+            "http://user:password@host:8080/path",
+            "http://192.168.0.1:8080/path",
+            "http://[::1]/path",
+            "http://[::1]:8080/path",
+            "http://host.example.com/path",
+            "http://host-name.example.com:80/path",
+            "http://host%2ename.example.com/path"
+        };
+
+        for (String uri : goodUris)
+        {
+            try
+            {
+                new HttpURI(uri);
+            }
+            catch (Exception e)
+            {
+                fail("Unexpected exception for '" + uri + "': " + e);
+            }
+        }
+    }
 }
