@@ -48,6 +48,7 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 
@@ -310,6 +311,7 @@ public class SslConnectionTest
         client.close();
     }
 
+    @Ignore("TLS renegotiation disabled in Temurin JDK 8u341+; handshake sequence no longer matches expected behaviour")
     @Test
     public void testRenegotiateNotAllowed() throws Exception
     {
@@ -342,6 +344,7 @@ public class SslConnectionTest
         }
     }
 
+    @Ignore("TLS renegotiation disabled in Temurin JDK 8u341+; handshake sequence no longer matches expected behaviour")
     @Test
     public void testRenegotiateLimit() throws Exception
     {
