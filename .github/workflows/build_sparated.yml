@@ -85,9 +85,8 @@ jobs:
             -keystore "$KS" -storepass "$STOREPASS" -keypass "$KEYPASS"
 
       - name: Pack and test Module
-        working-directory: ${{ matrix.name }}
         # The bash shell will resolve $ALPN_VERSION from the env block
-        run: "mvn clean package -Dalpn.version=$ALPN_VERSION"
+        run: "mvn clean package -pl ${{ matrix.name }} -am -Dalpn.version=$ALPN_VERSION"
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
