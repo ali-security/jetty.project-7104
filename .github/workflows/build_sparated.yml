@@ -18,6 +18,7 @@ jobs:
           - name: "jetty-server"
           - name: "jetty-servlets"
           - name: "jetty-util"
+          - name: "jetty-http"
 
     env:
       MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
