@@ -178,7 +178,7 @@ public class DoSFilter implements Filter
     private volatile long _maxRequestMs;
     private volatile long _maxIdleTrackerMs;
     private volatile boolean _insertHeaders;
-    private volatile boolean _trackSessions;
+    private final boolean _trackSessions = false;
     private volatile boolean _remotePort;
     private volatile boolean _enabled;
     private Semaphore _passes;
@@ -970,7 +970,6 @@ public class DoSFilter implements Filter
      */
     public void setTrackSessions(boolean value)
     {
-        _trackSessions = value;
     }
 
     /**
