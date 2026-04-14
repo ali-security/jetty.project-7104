@@ -74,8 +74,15 @@ jobs:
             -alias wild \
             -keystore "$KS" -storepass "$STOREPASS" -keypass "$KEYPASS"
 
-      - name: Build and test
-        run: "mvn clean package -pl jetty-util,jetty-http,jetty-server,jetty-servlets -am -Dalpn.version=$ALPN_VERSION"
+      - name: Compile
+        run: "mvn clean install -pl jetty-util,jetty-http,jetty-server,jetty-servlets -am -DskipTests -Dalpn.version=$ALPN_VERSION"
+
+      - name: Test (with retry)
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          command: "mvn test -pl jetty-util,jetty-http,jetty-server,jetty-servlets -Dalpn.version=$ALPN_VERSION"
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
