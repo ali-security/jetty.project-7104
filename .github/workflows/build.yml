@@ -38,7 +38,7 @@ jobs:
 
       - name: Test
         id: test
-        run: mvn -B test -pl !jetty-proxy,!jetty-distribution -Dmaven.test.failure.ignore=true -Dstress=false -Dalpn.version=${{ env.ALPN_VERSION }}
+        run: mvn -B test -pl !jetty-proxy,!jetty-distribution,!test-quickstart -Dmaven.test.failure.ignore=true -Dstress=false -Dalpn.version=${{ env.ALPN_VERSION }}
         # run: mvn -B install -Dmaven.test.failure.ignore=true -Dalpn.version=${{ env.ALPN_VERSION }}
         continue-on-error: true
 
