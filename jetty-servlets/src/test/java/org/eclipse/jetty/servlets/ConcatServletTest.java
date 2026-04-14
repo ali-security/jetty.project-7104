@@ -44,6 +44,9 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.startsWith;
+
 public class ConcatServletTest
 {
     private Server server;
@@ -110,6 +113,40 @@ public class ConcatServletTest
     }
 
     @Test
+    public void testDirectoryNotAccessible() throws Exception
+    {
+        File directoryFile = MavenTestingUtils.getTargetTestingDir();
+        Path directoryPath = directoryFile.toPath();
+        Path hiddenDirectory = directoryPath.resolve("WEB-INF");
+        Files.createDirectories(hiddenDirectory);
+        Path hiddenResource = hiddenDirectory.resolve("one.js");
+        try (OutputStream output = Files.newOutputStream(hiddenResource))
+        {
+            output.write("function() {}".getBytes(StandardCharsets.UTF_8));
+        }
+
+        String contextPath = "";
+        WebAppContext context = new WebAppContext(server, directoryPath.toString(), contextPath);
+        server.setHandler(context);
+        String concatPath = "/concat";
+        context.addServlet(ConcatServlet.class, concatPath);
+        server.start();
+
+        // Verify that I can get the file programmatically, as required by the spec.
+        Assert.assertNotNull(context.getServletContext().getResource("/WEB-INF/one.js"));
+
+        // Make sure ConcatServlet cannot see file system files.
+        String uri = contextPath + concatPath + "?/trick/../../" + directoryFile.getName();
+        String request = "" +
+                "GET " + uri + " HTTP/1.1\r\n" +
+                "Host: localhost\r\n" +
+                "Connection: close\r\n" +
+                "\r\n";
+        String response = connector.getResponses(request);
+        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+    }
+
+    @Test
     public void testWEBINFResourceIsNotServed() throws Exception
     {
         File directoryFile = MavenTestingUtils.getTargetTestingDir();
@@ -132,45 +169,30 @@ public class ConcatServletTest
         // Verify that I can get the file programmatically, as required by the spec.
         Assert.assertNotNull(context.getServletContext().getResource("/WEB-INF/one.js"));
 
-        // Having a path segment and then ".." triggers a special case
-        // that the ConcatServlet must detect and avoid.
-        String uri = contextPath + concatPath + "?/trick/../WEB-INF/one.js";
+        // Cannot access WEB-INF.
+        assertWEBINFBlocked(contextPath + concatPath + "?/WEB-INF/", "HTTP/1.1 404 ");
+        assertWEBINFBlocked(contextPath + concatPath + "?/WEB-INF/one.js", "HTTP/1.1 404 ");
+
+        // Having a path segment and then ".." triggers a special case that the ConcatServlet must detect and avoid.
+        assertWEBINFBlocked(contextPath + concatPath + "?/trick/../WEB-INF/one.js", "HTTP/1.1 404 ");
+
+        // Make sure ConcatServlet behaves well if it's case insensitive.
+        assertWEBINFBlocked(contextPath + concatPath + "?/trick/../web-inf/one.js", "HTTP/1.1 404 ");
+
+        // Make sure ConcatServlet behaves well if encoded.
+        assertWEBINFBlocked(contextPath + concatPath + "?/trick/..%2FWEB-INF%2Fone.js", "HTTP/1.1 404 ");
+        assertWEBINFBlocked(contextPath + concatPath + "?/%2557EB-INF/one.js", "HTTP/1.1 500 ");
+        assertWEBINFBlocked(contextPath + concatPath + "?/js/%252e%252e/WEB-INF/one.js", "HTTP/1.1 500 ");
+    }
+
+    private void assertWEBINFBlocked(String uri, String expectedStatus) throws Exception
+    {
         String request = "" +
                 "GET " + uri + " HTTP/1.1\r\n" +
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
-
-        // Make sure ConcatServlet behaves well if it's case insensitive.
-        uri = contextPath + concatPath + "?/trick/../web-inf/one.js";
-        request = "" +
-                "GET " + uri + " HTTP/1.1\r\n" +
-                "Host: localhost\r\n" +
-                "Connection: close\r\n" +
-                "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
-
-        // Make sure ConcatServlet behaves well if encoded.
-        uri = contextPath + concatPath + "?/trick/..%2FWEB-INF%2Fone.js";
-        request = "" +
-                "GET " + uri + " HTTP/1.1\r\n" +
-                "Host: localhost\r\n" +
-                "Connection: close\r\n" +
-                "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
-
-        // Make sure ConcatServlet cannot see file system files.
-        uri = contextPath + concatPath + "?/trick/../../" + directoryFile.getName();
-        request = "" +
-                "GET " + uri + " HTTP/1.1\r\n" +
-                "Host: localhost\r\n" +
-                "Connection: close\r\n" +
-                "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+        String response = connector.getResponse(request);
+        assertThat(response, startsWith(expectedStatus));
     }
 }
