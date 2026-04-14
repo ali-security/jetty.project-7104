@@ -38,22 +38,13 @@ jobs:
 
       - name: Test
         id: test
-        run: mvn -B test -pl !jetty-proxy,!jetty-distribution,!test-quickstart -Dmaven.test.failure.ignore=true -Dstress=false -Dalpn.version=${{ env.ALPN_VERSION }}
+        run: mvn -B test -pl !jetty-proxy,!jetty-distribution -Dmaven.test.failure.ignore=true -Dstress=false -Dalpn.version=${{ env.ALPN_VERSION }}
         # run: mvn -B install -Dmaven.test.failure.ignore=true -Dalpn.version=${{ env.ALPN_VERSION }}
         continue-on-error: true
 
       - name: Compact3
         working-directory: aggregates/jetty-all-compact3
         run: mvn -B -Pcompact3 clean install -Dalpn.version=${{ env.ALPN_VERSION }}
-
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Surefire Test Results
-          path: "**/target/surefire-reports/TEST-*.xml"
-          reporter: java-junit
-          fail-on-error: false
 
       - name: Upload surefire reports
         uses: actions/upload-artifact@v4
