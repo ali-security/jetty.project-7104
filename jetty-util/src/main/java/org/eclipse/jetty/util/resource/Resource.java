@@ -43,9 +43,11 @@ import org.eclipse.jetty.util.UrlEncoded;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 
 /* ------------------------------------------------------------ */
-/** 
+/**
  * Abstract resource class.
  * <p>
  * This class provides a resource abstraction, where a resource may be
@@ -539,19 +541,33 @@ public abstract class Resource implements ResourceFactory, Closeable
      * @param parent True if the parent directory should be included
      * @return String of HTML
      * @throws IOException if unable to get the list of resources as HTML
+     * @deprecated use {@link #getListHTML(String, boolean, String)} instead
      */
-    public String getListHTML(String base,boolean parent)
-        throws IOException
+    @Deprecated
+    public String getListHTML(String base, boolean parent) throws IOException
+    {
+        return getListHTML(base, parent, null);
+    }
+
+    /* ------------------------------------------------------------ */
+    /** Get the resource list as a HTML directory listing.
+     * @param base The base URL
+     * @param parent True if the parent directory should be included
+     * @param query optional query string to append to links
+     * @return String of HTML
+     * @throws IOException if unable to get the list of resources as HTML
+     */
+    public String getListHTML(String base, boolean parent, String query) throws IOException
     {
         base=URIUtil.canonicalPath(base);
         if (base==null || !isDirectory())
             return null;
-        
+
         String[] ls = list();
         if (ls==null)
             return null;
         Arrays.sort(ls);
-        
+
         String decodedBase = URIUtil.decodePath(base);
         String title = "Directory: "+deTag(decodedBase);
 
@@ -562,46 +578,113 @@ public abstract class Resource implements ResourceFactory, Closeable
         buf.append("</TITLE></HEAD><BODY>\n<H1>");
         buf.append(title);
         buf.append("</H1>\n<TABLE BORDER=0>\n");
-        
+
         if (parent)
         {
             buf.append("<TR><TD><A HREF=\"");
             buf.append(URIUtil.addEncodedPaths(base,"../"));
             buf.append("\">Parent Directory</A></TD><TD></TD><TD></TD></TR>\n");
         }
-        
+
         String encodedBase = hrefEncodeURI(base);
-        
+
         DateFormat dfmt=DateFormat.getDateTimeInstance(DateFormat.MEDIUM,
                                                        DateFormat.MEDIUM);
         for (int i=0 ; i< ls.length ; i++)
         {
             Resource item = addPath(ls[i]);
-            
+
+            String name = item.getFileName();
+            if (StringUtil.isBlank(name))
+            {
+                continue; // skip
+            }
+
+            if (item.isDirectory() && !name.endsWith("/"))
+            {
+                name += URIUtil.SLASH;
+            }
+
             buf.append("\n<TR><TD><A HREF=\"");
             String path=URIUtil.addEncodedPaths(encodedBase,URIUtil.encodePath(ls[i]));
-            
+
             buf.append(path);
-            
+
             if (item.isDirectory() && !path.endsWith("/"))
                 buf.append(URIUtil.SLASH);
-            
-            // URIUtil.encodePath(buf,path);
+
             buf.append("\">");
-            buf.append(deTag(ls[i]));
+            buf.append(deTag(name));
             buf.append("&nbsp;");
             buf.append("</A></TD><TD ALIGN=right>");
-            buf.append(item.length());
-            buf.append(" bytes&nbsp;</TD><TD>");
-            buf.append(dfmt.format(new Date(item.lastModified())));
+            long length = item.length();
+            if (length >= 0)
+            {
+                buf.append(String.format("%,d bytes", length));
+            }
+            buf.append("&nbsp;</TD><TD>");
+            long lastModified = item.lastModified();
+            if (lastModified > 0)
+            {
+                buf.append(dfmt.format(new Date(lastModified)));
+            }
             buf.append("</TD></TR>");
         }
         buf.append("</TABLE>\n");
         buf.append("</BODY></HTML>\n");
-        
+
         return buf.toString();
     }
-    
+
+    /**
+     * Get the raw (decoded if possible) Filename for this Resource.
+     * This is the last segment of the path.
+     * @return the raw / decoded filename for this resource
+     */
+    private String getFileName()
+    {
+        try
+        {
+            // if a Resource supports File
+            File file = getFile();
+            if (file != null)
+            {
+                return file.getName();
+            }
+        }
+        catch (Throwable ignore)
+        {
+        }
+
+        // All others use raw getName
+        try
+        {
+            String rawName = getName(); // gets long name "/foo/bar/xxx"
+            int idx = rawName.lastIndexOf('/');
+            if (idx == rawName.length()-1)
+            {
+                // hit a tail slash, aka a name for a directory "/foo/bar/"
+                idx = rawName.lastIndexOf('/', idx-1);
+            }
+
+            String encodedFileName;
+            if (idx >= 0)
+            {
+                encodedFileName = rawName.substring(idx + 1);
+            }
+            else
+            {
+                encodedFileName = rawName; // entire name
+            }
+            return UrlEncoded.decodeString(encodedFileName, 0, encodedFileName.length(), UTF_8);
+        }
+        catch (Throwable ignore)
+        {
+        }
+
+        return null;
+    }
+
     /**
      * Encode any characters that could break the URI string in an HREF.
      * Such as <a href="/path/to;<script>Window.alert("XSS"+'%20'+"here");</script>">Link</a>
