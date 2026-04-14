@@ -175,6 +175,8 @@ public class HttpRequest implements Request
             String rawPath = uri.getRawPath();
             if (rawPath == null)
                 rawPath = "";
+            if (!rawPath.startsWith("/"))
+                rawPath = "/" + rawPath;
             this.path = rawPath;
             String query = uri.getRawQuery();
             if (query != null)

@@ -1758,17 +1758,22 @@ public class Request implements HttpServletRequest
         String info;
         if (path==null || path.length()==0)
         {
-            if (uri.isAbsolute())
+            if (HttpMethod.CONNECT.is(getMethod()))
+            {
+                path="/";
+                info=path;
+            }
+            else if (uri.isAbsolute())
             {
                 path="/";
                 uri.setPath(path);
+                info=path;
             }
             else
             {
                 setPathInfo("");
                 throw new BadMessageException(400,"Bad URI");
             }
-            info=path;
         }
         else if (!path.startsWith("/"))
         {
