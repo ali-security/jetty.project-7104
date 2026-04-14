@@ -16,8 +16,8 @@ jobs:
       matrix:
         include:
           - name: "jetty-server"
-          - name: "Jetty-servlets"
-          - name: "jetty-utils"
+          - name: "jetty-servlets"
+          - name: "jetty-util"
 
     env:
       MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
