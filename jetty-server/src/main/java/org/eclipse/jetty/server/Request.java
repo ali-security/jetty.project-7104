@@ -2326,19 +2326,39 @@ public class Request implements HttpServletRequest
             if (config == null)
                 throw new IllegalStateException("No multipart config for servlet");
 
+            int maxFormContentSize = -1;
+            int maxFormKeys = -1;
+            if (_context != null)
+            {
+                maxFormContentSize = _context.getContextHandler().getMaxFormContentSize();
+                maxFormKeys = _context.getContextHandler().getMaxFormKeys();
+            }
+            if (maxFormKeys < 0)
+            {
+                Object obj = _channel.getServer().getAttribute("org.eclipse.jetty.server.Request.maxFormKeys");
+                if (obj instanceof Number)
+                    maxFormKeys = ((Number)obj).intValue();
+            }
+
             _multiPartInputStream = new MultiPartInputStreamParser(getInputStream(),
                                                              getContentType(), config,
-                                                             (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null));
+                                                             (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null),
+                                                             maxFormKeys);
 
             setAttribute(__MULTIPART_INPUT_STREAM, _multiPartInputStream);
             setAttribute(__MULTIPART_CONTEXT, _context);
             Collection<Part> parts = _multiPartInputStream.getParts(); //causes parsing
+            long formContentSize = 0;
             ByteArrayOutputStream os = null;
             for (Part p:parts)
             {
                 MultiPartInputStreamParser.MultiPart mp = (MultiPartInputStreamParser.MultiPart)p;
                 if (mp.getContentDispositionFilename() == null)
                 {
+                    formContentSize = Math.addExact(formContentSize, p.getSize());
+                    if (maxFormContentSize >= 0 && formContentSize > maxFormContentSize)
+                        throw new IllegalStateException("Form is larger than max length " + maxFormContentSize);
+
                     // Servlet Spec 3.0 pg 23, parts without filename must be put into params.
                     String charset = null;
                     if (mp.getContentType() != null)
