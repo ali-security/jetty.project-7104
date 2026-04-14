@@ -1,0 +1,103 @@
+name: Jetty CI Separated
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false # Keeps other jobs running even if one module fails
+      matrix:
+        include:
+          - name: "jetty-server"
+          - name: "Jetty-servlets"
+          - name: "jetty-utils"
+
+    env:
+      MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
+      # The pom.xml profiles that set alpn.version only know about JDK 8
+      # builds up to 1.8.0_172. GitHub Actions runners ship a much newer
+      # JDK 8, so no profile activates and alpn.version stays as the
+      # literal default "undefined", breaking artifact resolution.
+      # We pin to the latest known-good version explicitly.
+      ALPN_VERSION: "8.1.12.v20180117"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: maven
+
+      # The "san" certificate in the committed snikeystore uses a DSA key.
+      # DHE_DSS cipher suites were disabled in Temurin JDK 8u341+, so the
+      # TLS handshake fails for any host backed by that cert (m.san.com,
+      # www.san.com).  Regenerate both SNI keystores with RSA 2048 keys so
+      # the SniSslConnectionFactoryTest tests can complete the handshake.
+      - name: Regenerate SNI keystores with RSA certificates
+        if: matrix.name == 'jetty-server'
+        env:
+          STOREPASS: storepwd
+          KEYPASS: keypwd
+          VALIDITY: "36500"
+        run: |
+          KS=jetty-server/src/test/resources/snikeystore
+          KSNW=jetty-server/src/test/resources/snikeystore_nowild
+          rm -f "$KS" "$KSNW"
+
+          for store in "$KS" "$KSNW"; do
+            keytool -genkeypair -keyalg RSA -keysize 2048 -sigalg SHA256withRSA \
+              -storetype JKS -validity "$VALIDITY" -noprompt \
+              -dname "CN=www.example.com, OU=Example, O=Other, L=Unknown, ST=Unknown, C=Unknown" \
+              -alias other \
+              -keystore "$store" -storepass "$STOREPASS" -keypass "$KEYPASS"
+
+            keytool -genkeypair -keyalg RSA -keysize 2048 -sigalg SHA256withRSA \
+              -storetype JKS -validity "$VALIDITY" -noprompt \
+              -dname "CN=jetty.eclipse.org, OU=Jetty, O=Eclipse, L=Unknown, ST=Unknown, C=Unknown" \
+              -alias jetty \
+              -keystore "$store" -storepass "$STOREPASS" -keypass "$KEYPASS"
+
+            keytool -genkeypair -keyalg RSA -keysize 2048 -sigalg SHA256withRSA \
+              -storetype JKS -validity "$VALIDITY" -noprompt \
+              -dname "CN=san example, OU=jetty, O=jetty, L=Unknown, ST=Unknown, C=Unknown" \
+              -ext "SAN=dns:www.san.com,dns:m.san.com" \
+              -alias san \
+              -keystore "$store" -storepass "$STOREPASS" -keypass "$KEYPASS"
+          done
+
+          # "wild" alias only belongs in snikeystore, not snikeystore_nowild
+          keytool -genkeypair -keyalg RSA -keysize 2048 -sigalg SHA256withRSA \
+            -storetype JKS -validity "$VALIDITY" -noprompt \
+            -dname "CN=*.domain.com, OU=Example, O=Example, L=Unknown, ST=Unknown, C=Unknown" \
+            -alias wild \
+            -keystore "$KS" -storepass "$STOREPASS" -keypass "$KEYPASS"
+
+      - name: Pack and test Module
+        working-directory: ${{ matrix.name }}
+        # The bash shell will resolve $ALPN_VERSION from the env block
+        run: "mvn clean package -Dalpn.version=$ALPN_VERSION"
+
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          # Matrix jobs run in parallel. We append the matrix name to 
+          # prevent them from overwriting each other's artifacts.
+          name: jetty-jars-${{ matrix.name }}-9.3.24.v20180605
+          path: |
+            ${{ matrix.dir }}/target/*.jar
+            !${{ matrix.dir }}/target/*-tests.jar
+            !${{ matrix.dir }}/target/*-sources.jar
+            !${{ matrix.dir }}/target/*-javadoc.jar
+          retention-days: 1
