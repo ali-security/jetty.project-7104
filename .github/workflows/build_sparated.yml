@@ -8,17 +8,8 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.name }}
+    name: Build
     runs-on: ubuntu-latest
-    
-    strategy:
-      fail-fast: false # Keeps other jobs running even if one module fails
-      matrix:
-        include:
-          - name: "jetty-server"
-          - name: "jetty-servlets"
-          - name: "jetty-util"
-          - name: "jetty-http"
 
     env:
       MAVEN_OPTS: "-Xms256m -Xmx1024m -Djava.awt.headless=true"
@@ -46,7 +37,6 @@ jobs:
       # www.san.com).  Regenerate both SNI keystores with RSA 2048 keys so
       # the SniSslConnectionFactoryTest tests can complete the handshake.
       - name: Regenerate SNI keystores with RSA certificates
-        if: matrix.name == 'jetty-server'
         env:
           STOREPASS: storepwd
           KEYPASS: keypwd
@@ -84,20 +74,17 @@ jobs:
             -alias wild \
             -keystore "$KS" -storepass "$STOREPASS" -keypass "$KEYPASS"
 
-      - name: Pack and test Module
-        # The bash shell will resolve $ALPN_VERSION from the env block
-        run: "mvn clean package -pl ${{ matrix.name }} -am -Dalpn.version=$ALPN_VERSION"
+      - name: Build and test
+        run: "mvn clean package -pl jetty-util,jetty-http,jetty-server,jetty-servlets -am -Dalpn.version=$ALPN_VERSION"
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          # Matrix jobs run in parallel. We append the matrix name to 
-          # prevent them from overwriting each other's artifacts.
-          name: jetty-jars-${{ matrix.name }}-9.3.24.v20180605
+          name: jetty-jars-9.3.24.v20180605
           path: |
-            ${{ matrix.dir }}/target/*.jar
-            !${{ matrix.dir }}/target/*-tests.jar
-            !${{ matrix.dir }}/target/*-sources.jar
-            !${{ matrix.dir }}/target/*-javadoc.jar
+            **/target/*.jar
+            !**/target/*-tests.jar
+            !**/target/*-sources.jar
+            !**/target/*-javadoc.jar
           retention-days: 1
